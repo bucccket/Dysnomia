@@ -1,0 +1,1 @@
+Hello Kernel! This is a text file on the disk!
