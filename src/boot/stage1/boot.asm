@@ -98,29 +98,29 @@ start:
 	mov  bx, buffer; es:bx = buffer
 	call disk_read
 
-	;   search for kernel.bin
+	;   search for stage2.bin
 	xor bx, bx; counter
 	mov di, buffer; points to "file name" field in DirectoryEntry
 
-.search_kernel:
-	mov  si, str_filename_kernel_bin
+.search_stage2:
+	mov  si, str_filename_stage2_bin
 	mov  cx, 11; compare up to 11 chars
 	push di
 	repe cmpsb; incrementally compare *si and *di until cx-- is null
 	pop  di
-	je   .found_kernel
+	je   .found_stage2
 
 	add di, 32
 	inc bx
 	cmp bx, [bdb_dir_entries_count]
-	jl  .search_kernel
+	jl  .search_stage2
 
-	jmp kernel_not_found_error
+	jmp stage2_not_found_error
 
-.found_kernel:
+.found_stage2:
 	;   dir should have the address to the entry
 	mov ax, [di+26]; DirectryEntry.FirstClusterLow
-	mov [u12_kernel_cluster], ax
+	mov [u12_stage2_cluster], ax
 
 	;    load FAT from disk
 	mov  ax, [bdb_reserved_sectors]; LBA
@@ -141,18 +141,18 @@ start:
 	;     0x000C8000 - 0x000EFFFF : BIOS Expansions                  | ROM and hardware mapped | "Upper Memory"
 	;     0x000F0000 - 0x000FFFFF : Motherboard BIOS                 |_________________________|
 
-	;   to read the kernel into it's best to choose the 480.5 KiB region at 0x7E00
+	;   to read the stage2 into it's best to choose the 480.5 KiB region at 0x7E00
 	;   since the File Allocation Table is read from 0x7E00 onward it's best to pad the
 	;   section in this instance 0x20000 was chose which leaves 98.5 KiB of buffer size
-	mov bx, KERNEL_LOAD_SEGMENT
+	mov bx, stage2_LOAD_SEGMENT
 	mov es, bx
-	mov bx, KERNEL_LOAD_OFFSET
+	mov bx, stage2_LOAD_OFFSET
 
-.load_kernel_loop:
+.load_stage2_loop:
 	;    read next cluster
-	mov  ax, [u12_kernel_cluster]
-	;    start sector = reserved + fat + sizeof root dir = 1 + 18 +143 = u12_kernel_cluster + 31 =  153
-	;    first cluster = (u12_kernel_cluster - 2) * sectors_per_cluster + start_sector
+	mov  ax, [u12_stage2_cluster]
+	;    start sector = reserved + fat + sizeof root dir = 1 + 18 +143 = u12_stage2_cluster + 31 =  153
+	;    first cluster = (u12_stage2_cluster - 2) * sectors_per_cluster + start_sector
 	add  ax, 31; works for now.. only on a floppy.. that's it
 	mov  cl, 1
 	mov  dl, [ebr_drive_number]
@@ -162,7 +162,7 @@ start:
 	add bx, [bdb_bytes_per_sector]
 
 	;   get location of next cluster
-	mov ax, [u12_kernel_cluster]
+	mov ax, [u12_stage2_cluster]
 	mov cx, 3; fatIndex = current cluster * 3 / 2
 	mul cx
 	mov cx, 2
@@ -186,20 +186,20 @@ start:
 	cmp ax, 0x0FF8
 	jae .read_finish
 
-	mov [u12_kernel_cluster], ax
-	jmp .load_kernel_loop
+	mov [u12_stage2_cluster], ax
+	jmp .load_stage2_loop
 
 .read_finish:
 
 	;   boot device select
 	mov dl, [ebr_drive_number]
 
-	;   set up registers for far jump to kernel
-	mov ax, KERNEL_LOAD_SEGMENT
+	;   set up registers for far jump to stage2
+	mov ax, stage2_LOAD_SEGMENT
 	mov ds, ax
 	mov es, ax
 
-	jmp KERNEL_LOAD_SEGMENT:KERNEL_LOAD_OFFSET
+	jmp stage2_LOAD_SEGMENT:stage2_LOAD_OFFSET
 
 	jmp wait_key_and_reboot
 
@@ -213,8 +213,8 @@ floppy_error:
 	call puts
 	jmp  wait_key_and_reboot
 
-kernel_not_found_error:
-	mov  si, str_kernel_not_found
+stage2_not_found_error:
+	mov  si, str_stage2_not_found
 	call puts
 	jmp  wait_key_and_reboot
 
@@ -356,12 +356,12 @@ disk_reset:
 
 str_loading:             db "Loading...", ENDL, 0
 str_read_fail:           db "Failed reading floppy", ENDL, 0
-str_filename_kernel_bin: db "KERNEL  BIN"
-str_kernel_not_found:    db "kernel not found", ENDL, 0
-u12_kernel_cluster       dw 0; 12 FAT cluster
+str_stage2_not_found:    db "2nd stage bootloader not found", ENDL, 0
+str_filename_stage2_bin: db "STAGE2  BIN"
+u12_stage2_cluster       dw 0; 12 FAT cluster
 
-KERNEL_LOAD_SEGMENT equ 0x2000
-KERNEL_LOAD_OFFSET equ 0
+stage2_LOAD_SEGMENT equ 0x2000
+stage2_LOAD_OFFSET equ 0
 
 times 510-($-$$) db 0
 dw    0AA55h
